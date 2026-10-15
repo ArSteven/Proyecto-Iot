@@ -1,0 +1,4 @@
+# Solo para wokwi.com en el navegador (en VS Code las instala PlatformIO)
+PubSubClient
+HX711 Arduino Library
+ESP32Servo
