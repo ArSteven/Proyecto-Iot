@@ -12,6 +12,11 @@
 #include <time.h>          // Hora real por NTP para marcar cada huevo
 #include "config.h"        // Pines, red, bróker y categorías
 
+// Si config.h no lo define, la tara automática se hace cada 15 s
+#ifndef INTERVALO_AUTOTARA_MS
+#define INTERVALO_AUTOTARA_MS 15000UL
+#endif
+
 // ------------------ BLOQUE 2: OBJETOS GLOBALES --------------------
 WiFiClient espClient;            // Socket TCP sobre WiFi
 PubSubClient client(espClient);  // Cliente MQTT que usa ese socket
@@ -37,6 +42,7 @@ int lecturasEstables = 0;
 float sumaEstable = 0;
 float pesoMedido = 0;             // Peso aceptado del huevo actual
 int categoriaActual = -1;
+unsigned long tUltimaTara = 0;    // Para la tara automática (corrige el corrimiento del cero)
 
 // Modo simulación: permite inyectar un peso exacto por Serial o MQTT
 bool simActivo = false;
@@ -150,12 +156,16 @@ void registrarHuevo(float peso, int cat) {
 // reset         -> reinicia las estadísticas
 // sim:<gramos>  -> simula un huevo con ese peso (ej. sim:63.5)
 // stats         -> publica e imprime el resumen
+// peso          -> muestra la lectura actual de la báscula en gramos
 void procesarComando(String cmd) {
   cmd.trim();
   cmd.toLowerCase();
   if (cmd == "tara") {
     bascula.tare(10);
+    tUltimaTara = millis();
     Serial.println("[CMD] Tara realizada");
+  } else if (cmd == "peso") {
+    Serial.printf("[PESO] Lectura actual: %.1f g\r\n", bascula.get_units(5));
   } else if (cmd == "reset") {
     reiniciarEstadisticas();
   } else if (cmd == "stats") {
@@ -234,6 +244,9 @@ void actualizarClasificador() {
         lecturasEstables = 0;
         sumaEstable = 0;
         cambiarEstado(ESTABILIZANDO);
+      } else if (!simActivo && millis() - tUltimaTara >= INTERVALO_AUTOTARA_MS) {
+        bascula.tare(5);           // Báscula vacía: vuelve a poner el cero
+        tUltimaTara = millis();
       }
       break;
 
@@ -279,6 +292,7 @@ void actualizarClasificador() {
 
     case VACIANDO:
       if (pesoActual < PESO_MIN_DETECCION) {
+        tUltimaTara = millis() - INTERVALO_AUTOTARA_MS + 1500;  // Re-tara 1,5 s después de vaciar
         cambiarEstado(ESPERANDO);
       } else if (millis() - tEstado >= TIEMPO_MAX_VACIADO_MS) {
         Serial.println("[ALERTA] La báscula no quedó vacía: posible huevo atascado");
@@ -304,6 +318,7 @@ void setup() {
   bascula.begin(HX711_DT_PIN, HX711_SCK_PIN);
   bascula.set_scale(FACTOR_CALIBRACION);
   bascula.tare(10);
+  tUltimaTara = millis();
   Serial.println("Báscula lista (tara hecha)");
 
   setup_wifi();
@@ -311,7 +326,7 @@ void setup() {
   client.setCallback(callback);
   client.setBufferSize(512);  // Por defecto son 256 bytes; el JSON de estadísticas es más largo
 
-  Serial.println("Comandos: tara | reset | stats | sim:<gramos>");
+  Serial.println("Comandos: tara | peso | reset | stats | sim:<gramos>");
   cambiarEstado(ESPERANDO);
 }
 
