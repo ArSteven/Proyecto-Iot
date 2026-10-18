@@ -38,7 +38,7 @@
 // ---------------------- BLOQUE D: BÁSCULA -------------------------
 // En Wokwi la celda "5kg" entrega 0-2100 cuentas para 0-5 kg -> 0.42 cuentas/gramo.
 // En hardware real este valor se obtiene con el programa de calibración (env:calibracion).
-#define FACTOR_CALIBRACION 0.42f
+#define FACTOR_CALIBRACION 190.92f
 
 #define PESO_MIN_DETECCION   30.0f   // g. Por debajo de esto la báscula se considera vacía
 #define TOLERANCIA_ESTABLE    1.5f   // g. Variación máxima entre lecturas para considerar estable

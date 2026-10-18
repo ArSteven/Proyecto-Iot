@@ -55,7 +55,7 @@ unsigned long tUltimoIntentoMqtt = 0;
 void cambiarEstado(Estado nuevo) {
   estado = nuevo;
   tEstado = millis();
-  Serial.printf("[ESTADO] %s\n", NOMBRES_ESTADO[nuevo]);
+  Serial.printf("[ESTADO] %s\r\n", NOMBRES_ESTADO[nuevo]);
 }
 
 // Recorre la tabla de mayor a menor y devuelve el índice de la categoría
@@ -91,7 +91,7 @@ void setup_wifi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\nWiFi conectado. IP: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("\nWiFi conectado. IP: %s\r\n", WiFi.localIP().toString().c_str());
     configTime(-5 * 3600, 0, "pool.ntp.org");  // Hora de Colombia (UTC-5)
   } else {
     Serial.println("\nSin WiFi: el clasificador sigue funcionando sin enviar datos.");
@@ -107,7 +107,7 @@ void publicarEvento(float peso, int cat) {
            "{\"id\":%lu,\"peso\":%.1f,\"categoria\":\"%s\",\"ts\":%lu}",
            totalHuevos, peso, CATEGORIAS[cat].nombre, ahoraEpoch());
   client.publish(TOPIC_EVENTO, json);
-  Serial.printf("[MQTT] %s -> %s\n", TOPIC_EVENTO, json);
+  Serial.printf("[MQTT] %s -> %s\r\n", TOPIC_EVENTO, json);
 }
 
 void publicarEstadisticas() {
@@ -140,7 +140,7 @@ void registrarHuevo(float peso, int cat) {
   sumaPesos += peso;
   if (totalHuevos == 1 || peso < pesoMin) pesoMin = peso;
   if (totalHuevos == 1 || peso > pesoMax) pesoMax = peso;
-  Serial.printf("[HUEVO #%lu] %.1f g -> %s\n", totalHuevos, peso, CATEGORIAS[cat].nombre);
+  Serial.printf("[HUEVO #%lu] %.1f g -> %s\r\n", totalHuevos, peso, CATEGORIAS[cat].nombre);
   publicarEvento(peso, cat);
   publicarEstadisticas();
 }
@@ -160,10 +160,10 @@ void procesarComando(String cmd) {
     reiniciarEstadisticas();
   } else if (cmd == "stats") {
     publicarEstadisticas();
-    Serial.printf("[STATS] total=%lu promedio=%.1f\n", totalHuevos,
+    Serial.printf("[STATS] total=%lu promedio=%.1f\r\n", totalHuevos,
                   totalHuevos ? sumaPesos / totalHuevos : 0);
     for (int i = 0; i < NUM_CATEGORIAS; i++)
-      Serial.printf("   %-5s: %lu\n", CATEGORIAS[i].nombre, conteo[i]);
+      Serial.printf("   %-5s: %lu\r\n", CATEGORIAS[i].nombre, conteo[i]);
   } else if (cmd.startsWith("sim:")) {
     if (estado != ESPERANDO) {
       Serial.println("[CMD] Espera a que termine el huevo actual");
@@ -171,9 +171,9 @@ void procesarComando(String cmd) {
     }
     pesoSimulado = cmd.substring(4).toFloat();
     simActivo = true;
-    Serial.printf("[CMD] Simulando huevo de %.1f g\n", pesoSimulado);
+    Serial.printf("[CMD] Simulando huevo de %.1f g\r\n", pesoSimulado);
   } else {
-    Serial.printf("[CMD] Comando desconocido: %s\n", cmd.c_str());
+    Serial.printf("[CMD] Comando desconocido: %s\r\n", cmd.c_str());
   }
 }
 
@@ -182,7 +182,7 @@ void procesarComando(String cmd) {
 void callback(char* topic, byte* payload, unsigned int length) {
   String msg;
   for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
-  Serial.printf("[MQTT] Mensaje en %s: %s\n", topic, msg.c_str());
+  Serial.printf("[MQTT] Mensaje en %s: %s\r\n", topic, msg.c_str());
   procesarComando(msg);
 }
 
@@ -190,15 +190,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
 // A diferencia del taller, NO bloquea: si el bróker no responde se
 // reintenta cada 5 s y mientras tanto la clasificación sigue trabajando.
 void mantenerMqtt() {
+  static bool estabaConectado = false;
   if (client.connected()) {
+    estabaConectado = true;
     client.loop();
     return;
+  }
+  if (estabaConectado) {
+    Serial.printf("[MQTT] Conexion perdida, rc=%d\r\n", client.state());
+    estabaConectado = false;
   }
   if (WiFi.status() != WL_CONNECTED) return;
   if (tUltimoIntentoMqtt && millis() - tUltimoIntentoMqtt < 5000) return;  // El primer intento es inmediato
   tUltimoIntentoMqtt = millis();
 
-  String clientId = "ESP32Huevos-" + String(random(0xffff), HEX);
+  String clientId = "ESP32Huevos-" + String(esp_random(), HEX);  // ID distinto en cada arranque
   Serial.print("Conectando a MQTT... ");
   // Last Will: si el ESP32 se cae, el bróker publica "offline" por él
   if (client.connect(clientId.c_str(), TOPIC_ESTADO, 1, true, "offline")) {
@@ -207,7 +213,7 @@ void mantenerMqtt() {
     client.subscribe(TOPIC_CMD);
     publicarEstadisticas();
   } else {
-    Serial.printf("falló, rc=%d. Reintento en 5 s\n", client.state());
+    Serial.printf("falló, rc=%d. Reintento en 5 s\r\n", client.state());
   }
 }
 
@@ -241,7 +247,7 @@ void actualizarClasificador() {
           pesoMedido = sumaEstable / lecturasEstables;  // Promedio de lecturas estables
           categoriaActual = clasificar(pesoMedido);
           servoDesviador.write(CATEGORIAS[categoriaActual].anguloDesviador);
-          Serial.printf("[PESO] %.1f g -> %s (desviador a %d°)\n", pesoMedido,
+          Serial.printf("[PESO] %.1f g -> %s (desviador a %d°)\r\n", pesoMedido,
                         CATEGORIAS[categoriaActual].nombre,
                         CATEGORIAS[categoriaActual].anguloDesviador);
           cambiarEstado(POSICIONANDO);
